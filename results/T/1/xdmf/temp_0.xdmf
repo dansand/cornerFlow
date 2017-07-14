@@ -1,0 +1,45 @@
+<?xml version="1.0" ?>
+<Xdmf xmlns:xi="http://www.w3.org/2001/XInclude" Version="2.0">
+<Domain>
+<Grid Name="FEM_Mesh_mesh">
+
+	<Time Value="3.08756279066e-05" />
+
+	<Topology Type="Quadrilateral" NumberOfElements="6144">
+		<DataItem ItemType="Function" Dimensions="6144 4" Function="JOIN($0, $1, $3, $2)">
+		<DataItem ItemType="HyperSlab" Dimensions="6144 1" Name="C0">
+				<DataItem Dimensions="3 2" Format="XML"> 0 0 1 1 6144 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="6144 1">mesh.h5:/en_map</DataItem>
+		</DataItem>
+		<DataItem ItemType="HyperSlab" Dimensions="6144 1" Name="C1">
+				<DataItem Dimensions="3 2" Format="XML"> 0 1 1 1 6144 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="6144 1">mesh.h5:/en_map</DataItem>
+		</DataItem>
+		<DataItem ItemType="HyperSlab" Dimensions="6144 1" Name="C2">
+				<DataItem Dimensions="3 2" Format="XML"> 0 2 1 1 6144 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="6144 1">mesh.h5:/en_map</DataItem>
+		</DataItem>
+		<DataItem ItemType="HyperSlab" Dimensions="6144 1" Name="C3">
+				<DataItem Dimensions="3 2" Format="XML"> 0 3 1 1 6144 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="6144 1">mesh.h5:/en_map</DataItem>
+		</DataItem>
+		</DataItem>
+	</Topology>
+	<Geometry Type="XYZ">
+		<DataItem ItemType="Function"  Dimensions="6305 3" Function="JOIN($0, $1, 0*$1)">
+			<DataItem ItemType="HyperSlab" Dimensions="6305 1" Name="XCoords">
+				<DataItem Dimensions="3 2" Format="XML"> 0 0 1 1 6305 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="6305 2">mesh.h5:/vertices</DataItem>
+			</DataItem>
+			<DataItem ItemType="HyperSlab" Dimensions="6305 1" Name="YCoords">
+				<DataItem Dimensions="3 2" Format="XML"> 0 1 1 1 6305 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="6305 2">mesh.h5:/vertices</DataItem>
+			</DataItem>
+		</DataItem>
+	</Geometry>
+	<Attribute Type="Scalar" Center="Node" Name="temperature">
+			<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="6305 1">temp_0.h5:/data</DataItem>
+	</Attribute>
+</Grid>
+</Domain>
+</Xdmf>
