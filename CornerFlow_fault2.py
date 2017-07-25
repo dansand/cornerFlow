@@ -51,7 +51,7 @@ except:
 
 #
 from unsupported_dan.utilities.interpolation import nn_evaluation
-from unsupported_dan.interfaces.marker2D import markerLine2D
+from unsupported_dan.interfaces.globalMarker2D import globalLine2D
 from unsupported_dan.faults.faults2D import fault2D, fault_collection
 from unsupported_dan.utilities.misc import cosine_taper
 from unsupported_dan.utilities.subduction import slab_top
@@ -194,7 +194,7 @@ md = edict({})
 md.refineMeshStatic=True
 md.stickyAir=False
 md.aspectRatio=1.5
-md.res=64
+md.res=72
 md.ppc=40                                #particles per cell
 md.elementType="Q1/dQ0"
 #md.elementType="Q2/DPC1"
@@ -491,46 +491,41 @@ ds = 1e3/sf.lengthScale
 normal = [1.,0.]
 
 faultData = slab_top([ndp.subZoneLoc, 1.0], normal, gradFn, ds, ndp.depth, mesh)
-fault = markerLine2D(mesh, velocityField, faultData[:,0] , faultData[:,1] , ndp.faultThickness, 1.)
+fault = globalLine2D(mesh, velocityField, faultData[:,0] , faultData[:,1] , ndp.faultThickness, 1.)
 
 
 
 
-# #also create another marker line to help to refine the mesh
-# 
-# markerData = fault.swarm.particleCoordinates.data.copy() + fault.director.data[:]*ndp.faultThickness
-# marker = markerLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
-# 
+# In[21]:
 
-# In[ ]:
+#fault.director
 
 
-
-
-# In[31]:
+# In[22]:
 
 #also create another marker line to help to refine the mesh
 
-markerData = faultData 
+markerData = faultData + fault.director[:]*ndp.faultThickness
+    
 
 
 
-marker = markerLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
+marker = globalLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
 
 
 
-with marker.swarm.deform_swarm():
-    marker.swarm.particleCoordinates.data[...] += marker.director.data[:]*ndp.faultThickness
+#with marker.swarm.deform_swarm():
+#    marker.swarm.particleCoordinates.data[...] += marker.director.data[:]*ndp.faultThickness
     
 marker.rebuild()
 
 
-# In[ ]:
+# In[25]:
+
+#marker.director
 
 
-
-
-# In[32]:
+# In[26]:
 
 #This block sets a number of variables that we'll used to define / control the fault geom
 
@@ -573,7 +568,7 @@ projectorMisc.solve()
 
 
 
-# In[33]:
+# In[27]:
 
 #this  is a correction for wedge-like slabs, or any slabs that do not intersect the surface at 0 degree dip
 angleCorrect = 1./(np.sin(np.deg2rad(90. - np.abs(np.rad2deg(np.arctan(gradFn(0.)))))))
@@ -587,7 +582,7 @@ distFn = fn.branching.conditional( conditions )
 
 # ## Temp. Field
 
-# In[34]:
+# In[28]:
 
 proxyTempVariable = uw.swarm.SwarmVariable(swarm, 'double', 1)
 
@@ -599,7 +594,7 @@ tempFn = fn.branching.conditional( conditions )
 proxyTempVariable.data[:] = tempFn.evaluate(swarm)
 
 
-# In[35]:
+# In[29]:
 
 ix0, weights0, d0 = nn_evaluation(swarm.particleCoordinates.data, 
                                   mesh.data , n=200, weighted=False)
@@ -617,7 +612,7 @@ initialtemperatureField.data[:,0] =  np.average(tempFn.evaluate(swarm)[:,0][ix0]
 # It's a reasonable approach for serial, but a bit convoluted for parallel. 
 # 
 
-# In[ ]:
+# In[30]:
 
 #This value seems to provide good results for a square mesh.
 #We end up with at leats one node in every element lying on the interface
@@ -632,22 +627,16 @@ signedDists = dN[nearbyNodesMask]
 
 dIgnore, pN = marker.kdtree.query(mesh.data, distance_upper_bound=ds)
 
+
+
+# In[31]:
+
 nearbyNodesMask2 = np.where(dIgnore != np.inf)
 markerIndexes = pN[nearbyNodesMask2]
 
 
-if uw.nProcs() == 1 or marker.director.data_shadow.shape[0] == 0:
-    allDirector = marker.director.data
-elif marker.director.data.shape[0] == 0:
-    allDirector = marker.director.data_shadow
-
-else:
-    allDirector = np.concatenate((marker.director.data,
-                                    marker.director.data_shadow))
-    
-
-#nodeDs = marker.director.data[markerIndexes]*signedDists
-nodeDs = allDirector[markerIndexes]*signedDists
+nodeDs = marker.director[markerIndexes]*signedDists
+#nodeDs = marker.d[markerIndexes]*signedDists
 
 
 
@@ -658,12 +647,7 @@ nodeAdjust = mesh.data[nearbyNodesMask] - nodeDs
 np.allclose(np.floor(np.linalg.norm(nodeDs/ds, axis=1)), 0.)
 
 
-# In[ ]:
-
-
-
-
-# In[ ]:
+# In[32]:
 
 #marker.director.data
 #marker.director.data_shadow
@@ -671,22 +655,21 @@ np.allclose(np.floor(np.linalg.norm(nodeDs/ds, axis=1)), 0.)
 #print(marker.empty)
 
 
-# In[ ]:
+# In[33]:
 
-print('yo yo')
 uw.barrier()
     
 with mesh.deform_mesh():
     mesh.data[nearbyNodesMask] = nodeAdjust
 
 
-# In[30]:
+# In[47]:
 
 fig= glucifer.Figure()
 #fig= glucifer.Figure(quality=3)
 fig.append( glucifer.objects.Points(swarm, proximityVariable, pointSize=1.5))
-fig.append( glucifer.objects.Points(fault.swarm, pointSize=3, colourBar=False))
-fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
+#fig.append( glucifer.objects.Points(fault.swarm, pointSize=3, colourBar=False))
+#fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
 
 #fig.append( glucifer.objects.Points(markerEvalMantle, pointSize=3, colourBar=False))
 #fig.append( glucifer.objects.Points(markerEvalFault, pointSize=3, colourBar=False))
@@ -706,7 +689,7 @@ fig.save_database('test0.gldb')
 
 # ## Boundary Conditions
 
-# In[56]:
+# In[35]:
 
 iWalls = mesh.specialSets["MinI_VertexSet"] + mesh.specialSets["MaxI_VertexSet"]
 jWalls = mesh.specialSets["MinJ_VertexSet"] + mesh.specialSets["MaxJ_VertexSet"]
@@ -720,7 +703,7 @@ rWalls = mesh.specialSets["MaxI_VertexSet"]
 
 # ### Temp BCs
 
-# In[106]:
+# In[36]:
 
 #make sure tempBcs are set exactly on mesh BCs
 
@@ -741,7 +724,7 @@ del fTright
 
 # ### Velocity BCs
 
-# In[ ]:
+# In[37]:
 
 nodes = nearbyNodesMask 
 
@@ -765,60 +748,50 @@ nodes = nearbyNodesMask
 #     #ax.scatter(mesh.data[neumannNodes.data][:,0], mesh.data[neumannNodes.data][:,1],s = 10)
 #     ax.scatter(mesh.data[nodes][:,0], mesh.data[nodes][:,1],s = 3, c = 'r')
 # 
-#     ax.scatter(fault.swarm.particleCoordinates.data[:,0], fault.swarm.particleCoordinates.data[:,1],s = 10)
+#     ax.scatter(fault.particleCoordinates[:,0], fault.particleCoordinates[:,1],s = 1)
 # 
 # 
 #     ax.set_aspect('equal')
 #     ax.set_ylim(0.4, 1.)
-#     ax.set_xlim(0.1, 0.8)
+#     ax.set_xlim(0., 0.8)
 # except:
 #     pass
 
-# In[110]:
+# In[39]:
 
-#Now we actually set the velocity. This uses the compute_normals method of the markerLine, 
-dv, nzv = fault.compute_normals(swarm.particleCoordinates.data, thickness=2.)
+#plt.plot(fault.director[:,0])
 
 
-#this bit gets the 'normal to the markerLine normal' 
-tangentVel = dv.copy()[:,-1::-1]
+# In[63]:
+
+#Now we actually set the velocity. 
+#this simple involves grabbbing the normal to the director, and mapping to mesh nodes
+
+tangentVel = marker.director[:].copy()[:,-1::-1]
+
 tangentVel[:,0]*=-1.  #these should be unit vectors, but a normalisation here would be good
 
 
-velocityField.data[nearbyNodesMask] =tangentVel[markerIndexes]*ndp.subVelocity
+velocityField.data[nearbyNodesMask] = tangentVel[markerIndexes]*ndp.subVelocity
 
 
 velocityField.data[tWalls.data]  = (0.,0.)
 
 
-# In[111]:
+# In[66]:
 
-#tangentVel.shape
-
-
-# In[112]:
-
-#old way
-#velocityField.data[:] = 0.
-#rotMatrix = np.array([[np.cos(-1.*np.deg2rad(ndp.theta)), -np.sin(-1.*np.deg2rad(ndp.theta)) ], 
-#                         [np.sin(-1.*np.deg2rad(ndp.theta)),  np.cos(-1.*np.deg2rad(ndp.theta))]])
-#velHat = np.dot(rotMatrix, [1.0,0.])
-#velocityField.data[nodes]= velHat*ndp.subVelocity
+#testVariable = swarm.add_variable( dataType="double", count=1 )
+#testVariable.data[:,0] = dv[:,0]
 
 
-# In[113]:
+# In[67]:
 
 drivenVel = mesh.specialSets["Empty"]
 drivenVel.add(nodes)
 drivenVel = drivenVel - lWalls - bWalls - rWalls - tWalls
 
 
-# In[ ]:
-
-
-
-
-# In[114]:
+# In[69]:
 
 #All the bCs
 
@@ -848,7 +821,7 @@ tempDbc = uw.conditions.DirichletCondition( variable      = temperatureField,
 
 # ## Rheology
 
-# In[115]:
+# In[48]:
 
 symStrainrate = fn.tensor.symmetric( 
                             velocityField.fn_gradient )
@@ -872,7 +845,7 @@ druckerDepthFn = fn.misc.max(0.0, depthFn + md.druckerAlpha*(dynamicPressureProx
 druckerFaultDepthFn = fn.misc.max(0.0, depthFn + md.druckerAlphaFault*(dynamicPressureProxyDepthFn))
 
 
-# In[116]:
+# In[49]:
 
 ##Mantle rheology
 diffusion = (1./ndp.diffusionPreExp)*            fn.math.exp( ((ndp.diffusionEnergy + (depthFn*ndp.diffusionVolume))/((temperatureField+  ndp.surfaceTemp))))
@@ -898,7 +871,7 @@ mantleViscosityFn = safe_visc(viscosity,  viscmax=ndp.viscosityMax)
  
 
 
-# In[117]:
+# In[50]:
 
 normDepths = depthFn/ndp.refDepthInterface
 interfaceCreep = ndp.refViscInterface*fn.math.exp(ndp.logDelVisc*(1. - normDepths) )
@@ -923,14 +896,14 @@ depthTaperFn = cosine_taper(depthFn, ndp.crustViscCutoffDepth, ndp.crustViscEndW
 interfaceViscosityFn =  interfaceViscosityFn*(1. - depthTaperFn) + depthTaperFn*mantleViscosityFn
 
 
-# In[118]:
+# In[51]:
 
 
 #interfaceViscosityFn = safe_visc(fn.misc.min(interfaceDiffusion, interfaceYielding), viscmin=ndp.viscosityMinInterface, viscmax=ndp.viscosityMax)
 
 
 
-# In[119]:
+# In[52]:
 
 viscosityMapFn = fn.branching.map( fn_key = proximityVariable,
                          mapping = {0:mantleViscosityFn,
@@ -947,22 +920,22 @@ viscosityMapFn = fn.branching.map( fn_key = proximityVariable,
 # secondViscosityFn  = fn.branching.map( fn_key = proximityVariable, 
 #                                        mapping = viscosity2Map )
 
-# In[120]:
+# In[53]:
 
 div = (velocityField.fn_gradient[0] + velocityField.fn_gradient[3])
 
 
-# In[121]:
+# In[54]:
 
 ndp.ysMaxInterface
 
 
-# In[139]:
+# In[83]:
 
 fig= glucifer.Figure(quality=3)
 
-#fig.append( glucifer.objects.Points(swarm,viscosityMapFn, logScale=True, pointSize=2))
-fig.append( glucifer.objects.Points(swarm, temperatureField, pointSize=1.8))
+fig.append( glucifer.objects.Points(swarm,viscosityMapFn, logScale=True, pointSize=2))
+#fig.append( glucifer.objects.Points(swarm, temperatureField, pointSize=1.8))
 fig.append( glucifer.objects.Contours(mesh,temperatureField, colours='black', interval=0.26,))
 #fig.append( glucifer.objects.Contours(mesh,initialtemperatureField, colours='blue', interval=0.26))
 #fig.append( glucifer.objects.Points(swarm, strainRate_2ndInvariant, logScale=True))
@@ -978,7 +951,7 @@ fig.append( glucifer.objects.Contours(mesh,temperatureField, colours='black', in
 #fig.append( glucifer.objects.Points(markerEvalFault, pointSize=3, colourBar=False))
 #fig.append( glucifer.objects.Points(markerEvalMantle, pointSize=3, colourBar=False))
 
-fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
+#fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
 
 
 #fig.append( glucifer.objects.Surface(mesh, velocityField[0], pointSize=3, discrete=True))
@@ -996,19 +969,19 @@ fig.show()
 #fig.save_image('test.png')
 
 
-# In[123]:
+# In[71]:
 
 #plt.plot(mesh.data[lWalls.data][:,1]*sf.lengthScale, depthTaperFn.evaluate(lWalls))
 #plt.plot(mesh.data[bWalls.data][:,0]*sf.lengthScale, velocityField[1].evaluate(bWalls))
 #plt.plot(mesh.data[tWalls.data][:,0]*sf.lengthScale, velocityField[0].evaluate(tWalls))
 
 
-# In[124]:
+# In[72]:
 
 uw.barrier()
 
 
-# In[125]:
+# In[73]:
 
 #%pylab inline
 
@@ -1017,7 +990,7 @@ uw.barrier()
 
 # ## Stokes
 
-# In[126]:
+# In[74]:
 
 stokesPIC = uw.systems.Stokes( velocityField  = velocityField, 
                                    pressureField  = pressureField,
@@ -1034,7 +1007,7 @@ stokesPIC = uw.systems.Stokes( velocityField  = velocityField,
 #                                     _fn_viscosity2  = secondViscosityFn,
 #                                     _fn_director    = directorVector)
 
-# In[130]:
+# In[75]:
 
 solver = uw.systems.Solver(stokesPIC)
 
@@ -1046,7 +1019,7 @@ solver = uw.systems.Solver(stokesPIC)
 
 
 
-# In[131]:
+# In[76]:
 
 #solver.set_penalty(1.0e7)
 #solver.set_inner_method("mumps")
@@ -1059,14 +1032,14 @@ solver = uw.systems.Solver(stokesPIC)
 
 
 
-# In[132]:
+# In[77]:
 
 #md.penaltyMethod = False
 #solver.options.main.list()
 #md.penaltyMethod
 
 
-# In[133]:
+# In[78]:
 
 
 if md.penaltyMethod:
@@ -1082,39 +1055,39 @@ else:
     #solver.options.mg.levels = 5
 
 
-# In[134]:
+# In[79]:
 
 #solver.options.mg.levels
 
 
-# In[135]:
+# In[80]:
 
 print("First solve")
 
 
-# In[136]:
+# In[81]:
 
 solver.solve(nonLinearIterate=True, nonLinearTolerance=md.nltol)
 
 
-# In[61]:
+# In[72]:
 
 #md.penaltyMethod
 
 
-# In[62]:
+# In[73]:
 
 uw.barrier()
 
 
-# In[63]:
+# In[74]:
 
 print("solve done")
 
 
 # ## Dissipative heatingFn
 
-# In[143]:
+# In[75]:
 
 #dissipative heating in terms of the sqrt. strain rate second invariant is:
 
@@ -1130,21 +1103,21 @@ accumulatedTemp.data[:] = 0.
 
 # ## fault diffusivity
 
-# In[62]:
+# In[76]:
 
 diffusivityFn = fn.branching.map( fn_key = proximityVariable,
                          mapping = {0:1.,
                                     1:md.interfaceDiffusivityFac} )
 
 
-# In[63]:
+# In[77]:
 
 #md.interfaceDiffusivityFac
 
 
 # ## Advection - Diffusion
 
-# In[64]:
+# In[78]:
 
 advDiff = uw.systems.AdvectionDiffusion( phiField       = temperatureField, 
                                          phiDotField    = temperatureDotField, 
@@ -1154,7 +1127,7 @@ advDiff = uw.systems.AdvectionDiffusion( phiField       = temperatureField,
                                          conditions     = [tempNbc, tempDbc] )
 
 
-# In[65]:
+# In[79]:
 
 if md.materialAdvection:
     advector = uw.systems.SwarmAdvector( swarm=swarm, velocityField=velocityField, order=2 )
@@ -1162,14 +1135,14 @@ if md.materialAdvection:
 
 
 
-# In[66]:
+# In[80]:
 
 dt = advDiff.get_max_dt()*md.courantFac #additional md.courantFac helps stabilise advDiff
 advDiff.integrate(dt)
 print(dt)
 
 
-# In[67]:
+# In[81]:
 
 #fig= glucifer.Figure(quality=3)
 
@@ -1193,14 +1166,14 @@ print(dt)
 #fig.save_database('test.gldb')
 
 
-# In[68]:
+# In[82]:
 
 fig.save_database('test.gldb')
 
 
 # ## Equilibrium
 
-# In[69]:
+# In[83]:
 
 prevTempField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1)
 
@@ -1208,7 +1181,7 @@ prevTempField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1)
 prevTempField.data[:] = 0.
 
 
-# In[70]:
+# In[84]:
 
 def volumeint(Fn = 1., rFn=1.):
     return uw.utils.Integral( Fn*rFn,  mesh )
@@ -1423,10 +1396,10 @@ fig.show()
 
 # ## Get data along fault points
 
-# In[292]:
+# In[87]:
 
 ds = ndp.faultThickness/2.
-evalPoints0 = fault.swarm.particleCoordinates.data + fault.director.data[...]*ds
+evalPoints0 = fault.particleCoordinates + fault.director[...]*ds
 
 #Create the temp Swarm
 markerEvalFault = uw.swarm.Swarm( mesh=mesh )
@@ -1435,19 +1408,19 @@ catch = markerEvalFault.add_particles_with_coordinates(evalPoints0)
 
 
 ds = ndp.faultThickness/2.
-evalPoints1 = fault.swarm.particleCoordinates.data - fault.director.data[...]*ds
+evalPoints1 = fault.particleCoordinates  - fault.director[...]*ds
 #Create the temp Swarm
 markerEvalMantle = uw.swarm.Swarm( mesh=mesh )
 catch = markerEvalMantle.add_particles_with_coordinates(evalPoints1)
 
 
-# In[293]:
+# In[88]:
 
 #create velocity magnitude fn
 velMagFn = uw.function.math.sqrt( uw.function.math.dot( velocityField, velocityField ) )
 
 
-# In[458]:
+# In[89]:
 
 #use a weighted interpolation
 
@@ -1477,7 +1450,7 @@ mantleVelMag = velMagFn.evaluate(markerEvalMantle)[:,0]
 
 
 
-# In[459]:
+# In[90]:
 
 def save_files():
     
@@ -1513,12 +1486,12 @@ def save_files():
     mantleSr.save( fullpath + "mantleSr" + str(step).zfill(5))
 
 
-# In[460]:
+# In[91]:
 
 save_files()
 
 
-# In[461]:
+# In[92]:
 
 get_ipython().magic(u'pylab inline')
 fig, ax = plt.subplots()
@@ -1536,7 +1509,7 @@ ax.set_ylim(400, 0)
 ax.legend()
 
 
-# In[467]:
+# In[93]:
 
 get_ipython().magic(u'pylab inline')
 fig, ax = plt.subplots()

@@ -10,14 +10,6 @@
 # 
 # <a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />
 
-# I started work on making this code parallel friendly, but have been stymied somewhat. This shows some of the pitfalls of the markerLine2d objects, in that building them from swarms, means the individual segments cannot be seen by other processors. 
-# 
-# I think the obvious way forward here is to define global markerLine2d objects. Either this means not using swarms (in which case they cannot be advected), 
-# 
-# or it means having robust mpi4py allgather calls, where we stich togther swarm and swarmVar data whenever we want to do anything with our markerLines. 
-# 
-# In the current exmaple, advection is not important, so it may be worth considering this a special case. 
-
 # In[1]:
 
 import numpy as np
@@ -51,7 +43,7 @@ except:
 
 #
 from unsupported_dan.utilities.interpolation import nn_evaluation
-from unsupported_dan.interfaces.marker2D import markerLine2D
+from unsupported_dan.interfaces.globalMarker2D import globalLine2D
 from unsupported_dan.faults.faults2D import fault2D, fault_collection
 from unsupported_dan.utilities.misc import cosine_taper
 from unsupported_dan.utilities.subduction import slab_top
@@ -120,7 +112,7 @@ uw.barrier() #Barrier here so no procs run the check in the next cell too early
 
 # ## Params
 
-# In[6]:
+# In[51]:
 
 dp = edict({})
 #Main physical paramters
@@ -194,7 +186,7 @@ md = edict({})
 md.refineMeshStatic=True
 md.stickyAir=False
 md.aspectRatio=1.5
-md.res=64
+md.res=72
 md.ppc=40                                #particles per cell
 md.elementType="Q1/dQ0"
 #md.elementType="Q2/DPC1"
@@ -209,8 +201,9 @@ md.dissipativeHeating = True
 md.powerLaw = False
 md.interfaceDiffusivityFac = 1.
 md.materialAdvection=False
-md.wedgeType = 2  #1 is a triangular wedge, 2 is a curved / linear slab defined by params in dp.
+md.wedgeType = 1  #1 is a triangular wedge, 2 is a curved / linear slab defined by params in dp.
 md.plasticInterface = False
+md.runTimeMa = 10.
 
 
 
@@ -340,13 +333,6 @@ def slabFn(x):
 vslabFn= np.vectorize(slabFn)
 
 
-# testxs = np.linspace(ndp.subZoneLoc, maxX, 100)
-# testys = vslabFn(testxs)
-# %pylab inline
-# fig, ax = plt.subplots()
-# ax.scatter(testxs, testys, s= 0.1)
-# ax.set_aspect('equal')
-
 # 
 # ## Make mesh / FeVariables
 
@@ -378,18 +364,13 @@ diffusivityFn = fn.misc.constant(1.)
 
 # In[12]:
 
-#xres
-
-
-# In[13]:
-
 velocityField.data[:] = 0.
 pressureField.data[:] = 0.
 temperatureField.data[:] = 0.
 initialtemperatureField.data[:] = 0.
 
 
-# In[14]:
+# In[13]:
 
 #Uw geometry shortcuts
 
@@ -403,7 +384,7 @@ yFn = coordinate[1]
 
 # ## Swarm
 
-# In[15]:
+# In[14]:
 
 swarm = uw.swarm.Swarm(mesh=mesh, particleEscape=True)
 materialVariable      = swarm.add_variable( dataType="int", count=1 )
@@ -412,7 +393,7 @@ layout = uw.swarm.layouts.PerCellRandomLayout(swarm=swarm, particlesPerCell=int(
 swarm.populate_using_layout( layout=layout ) # Now use it to populate.
 
 
-# In[16]:
+# In[15]:
 
 proximityVariable      = swarm.add_variable( dataType="int", count=1 )
 signedDistanceVariable = swarm.add_variable( dataType="double", count=1 )
@@ -428,7 +409,7 @@ proximityVariable.data[:] = 0
 signedDistanceVariable.data[:] = 0.0
 
 
-# In[17]:
+# In[16]:
 
 #swarm.particleGlobalCount
 
@@ -437,7 +418,7 @@ signedDistanceVariable.data[:] = 0.0
 # 
 # We build a markerLine object to help set up the temperature stencil and the subduction interface
 
-# In[18]:
+# In[17]:
 
 #Create some slab gradient functions to use with slab_top()
 
@@ -472,7 +453,7 @@ def mixedGradientFn(S):
         return slopeCrossOver
 
 
-# In[19]:
+# In[18]:
 
 #choose the type of slab shape to use
 
@@ -483,7 +464,7 @@ elif md.wedgeType == 2:
     gradFn = mixedGradientFn
 
 
-# In[20]:
+# In[19]:
 
 #create the fault
 
@@ -491,49 +472,25 @@ ds = 1e3/sf.lengthScale
 normal = [1.,0.]
 
 faultData = slab_top([ndp.subZoneLoc, 1.0], normal, gradFn, ds, ndp.depth, mesh)
-fault = markerLine2D(mesh, velocityField, faultData[:,0] , faultData[:,1] , ndp.faultThickness, 1.)
+fault = globalLine2D(mesh, velocityField, faultData[:,0] , faultData[:,1] , ndp.faultThickness, 1.)
 
 
 
 
-# #also create another marker line to help to refine the mesh
-# 
-# markerData = fault.swarm.particleCoordinates.data.copy() + fault.director.data[:]*ndp.faultThickness
-# marker = markerLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
-# 
-
-# In[ ]:
-
-
-
-
-# In[31]:
+# In[20]:
 
 #also create another marker line to help to refine the mesh
+#this one sits at the bottom of the weak zone
 
-markerData = faultData 
-
-
-
-marker = markerLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
-
-
-
-with marker.swarm.deform_swarm():
-    marker.swarm.particleCoordinates.data[...] += marker.director.data[:]*ndp.faultThickness
+markerData = faultData + fault.director[:]*ndp.faultThickness
     
-marker.rebuild()
+
+marker = globalLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
 
 
-# In[ ]:
-
-
-
-
-# In[32]:
+# In[21]:
 
 #This block sets a number of variables that we'll used to define / control the fault geom
-
 
 # set the proximity
 
@@ -553,7 +510,7 @@ directorVector.data[dnz[(sd < 0)[:,0]]] = 0.
 
 signedDistanceVariable.data[dnz] = sd[dnz]
 
-#Creat a binary function to distinguish above and below the slab
+#Create a binary function to distinguish above and below the slab
 
 upperLowerVar = uw.swarm.SwarmVariable(swarm, 'double', 1)
 upperLowerVar.data[...] = 1.
@@ -568,12 +525,7 @@ projectorMisc.solve()
 # 
 # The temperature stencil is set using a depth / distance field (and a cooling model), which follows the curve of the slab into the mantle.
 
-# In[ ]:
-
-
-
-
-# In[33]:
+# In[22]:
 
 #this  is a correction for wedge-like slabs, or any slabs that do not intersect the surface at 0 degree dip
 angleCorrect = 1./(np.sin(np.deg2rad(90. - np.abs(np.rad2deg(np.arctan(gradFn(0.)))))))
@@ -587,7 +539,7 @@ distFn = fn.branching.conditional( conditions )
 
 # ## Temp. Field
 
-# In[34]:
+# In[23]:
 
 proxyTempVariable = uw.swarm.SwarmVariable(swarm, 'double', 1)
 
@@ -599,7 +551,7 @@ tempFn = fn.branching.conditional( conditions )
 proxyTempVariable.data[:] = tempFn.evaluate(swarm)
 
 
-# In[35]:
+# In[24]:
 
 ix0, weights0, d0 = nn_evaluation(swarm.particleCoordinates.data, 
                                   mesh.data , n=200, weighted=False)
@@ -612,15 +564,13 @@ initialtemperatureField.data[:,0] =  np.average(tempFn.evaluate(swarm)[:,0][ix0]
 
 # ## Mesh deformation
 # 
-# Here I use proximity to a marker line to define nodes to adjust. 
-# 
-# It's a reasonable approach for serial, but a bit convoluted for parallel. 
+# Here I use proximity to a marker line to define nodes to adjust. The nodes effectivey sit right on yhe marker line and become the nodes we impose velocity on.
 # 
 
-# In[ ]:
+# In[25]:
 
 #This value seems to provide good results for a square mesh.
-#We end up with at leats one node in every element lying on the interface
+#We end up with at least one node in every element lying on the interface
 
 ds = 0.35*(mesh.maxCoord[1] - mesh.minCoord[1])/mesh.elementRes[1]
 
@@ -630,27 +580,14 @@ dN, pIgnore  = marker.compute_signed_distance(mesh.data, distance=ds)
 nearbyNodesMask = np.where(np.abs(dN) < ds)[0]
 signedDists = dN[nearbyNodesMask]
 
+#This call is to get pN, the nodes in the marker Line that are closes to the mesh nodes
 dIgnore, pN = marker.kdtree.query(mesh.data, distance_upper_bound=ds)
-
 nearbyNodesMask2 = np.where(dIgnore != np.inf)
 markerIndexes = pN[nearbyNodesMask2]
 
 
-if uw.nProcs() == 1 or marker.director.data_shadow.shape[0] == 0:
-    allDirector = marker.director.data
-elif marker.director.data.shape[0] == 0:
-    allDirector = marker.director.data_shadow
-
-else:
-    allDirector = np.concatenate((marker.director.data,
-                                    marker.director.data_shadow))
-    
-
-#nodeDs = marker.director.data[markerIndexes]*signedDists
-nodeDs = allDirector[markerIndexes]*signedDists
-
-
-
+#now we can use the director to define the mesh adjustment
+nodeDs = marker.director[markerIndexes]*signedDists
 nodeAdjust = mesh.data[nearbyNodesMask] - nodeDs
 
 
@@ -658,35 +595,24 @@ nodeAdjust = mesh.data[nearbyNodesMask] - nodeDs
 np.allclose(np.floor(np.linalg.norm(nodeDs/ds, axis=1)), 0.)
 
 
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-#marker.director.data
-#marker.director.data_shadow
-#print((allDirector[markerIndexes]).shape)
-#print(marker.empty)
-
-
-# In[ ]:
-
-print('yo yo')
 uw.barrier()
     
 with mesh.deform_mesh():
     mesh.data[nearbyNodesMask] = nodeAdjust
 
 
-# In[30]:
+# In[ ]:
+
+
+
+
+# In[91]:
 
 fig= glucifer.Figure()
 #fig= glucifer.Figure(quality=3)
 fig.append( glucifer.objects.Points(swarm, proximityVariable, pointSize=1.5))
-fig.append( glucifer.objects.Points(fault.swarm, pointSize=3, colourBar=False))
-fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
+#fig.append( glucifer.objects.Points(fault.swarm, pointSize=3, colourBar=False))
+#fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
 
 #fig.append( glucifer.objects.Points(markerEvalMantle, pointSize=3, colourBar=False))
 #fig.append( glucifer.objects.Points(markerEvalFault, pointSize=3, colourBar=False))
@@ -697,16 +623,16 @@ fig.append( glucifer.objects.Mesh(mesh, opacity=0.4))
 #fig.append( glucifer.objects.Surface(mesh, bcMeshVar))
 
 
-fig.show()
+#fig.show()
 
 #fig.save_image('proximity.png')
 
-fig.save_database('test0.gldb')
+#fig.save_database('test0.gldb')
 
 
 # ## Boundary Conditions
 
-# In[56]:
+# In[27]:
 
 iWalls = mesh.specialSets["MinI_VertexSet"] + mesh.specialSets["MaxI_VertexSet"]
 jWalls = mesh.specialSets["MinJ_VertexSet"] + mesh.specialSets["MaxJ_VertexSet"]
@@ -715,12 +641,12 @@ bWalls =mesh.specialSets["MinJ_VertexSet"]
 lWalls = mesh.specialSets["MinI_VertexSet"]
 rWalls = mesh.specialSets["MaxI_VertexSet"]
       
-        
+    
 
 
 # ### Temp BCs
 
-# In[106]:
+# In[28]:
 
 #make sure tempBcs are set exactly on mesh BCs
 
@@ -732,8 +658,6 @@ temperatureField.data[rWalls.data] = fTright.evaluate(rWalls)
 
 temperatureField.data[tWalls.data] = 0.
 
-#temperatureField.data[bWalls.data] = ndp.potentialTemp
-
 
 del fTleft 
 del fTright
@@ -741,7 +665,7 @@ del fTright
 
 # ### Velocity BCs
 
-# In[ ]:
+# In[29]:
 
 nodes = nearbyNodesMask 
 
@@ -765,60 +689,39 @@ nodes = nearbyNodesMask
 #     #ax.scatter(mesh.data[neumannNodes.data][:,0], mesh.data[neumannNodes.data][:,1],s = 10)
 #     ax.scatter(mesh.data[nodes][:,0], mesh.data[nodes][:,1],s = 3, c = 'r')
 # 
-#     ax.scatter(fault.swarm.particleCoordinates.data[:,0], fault.swarm.particleCoordinates.data[:,1],s = 10)
+#     ax.scatter(fault.particleCoordinates[:,0], fault.particleCoordinates[:,1],s = 1)
 # 
 # 
 #     ax.set_aspect('equal')
 #     ax.set_ylim(0.4, 1.)
-#     ax.set_xlim(0.1, 0.8)
+#     ax.set_xlim(0., 0.8)
 # except:
 #     pass
 
-# In[110]:
+# In[30]:
 
-#Now we actually set the velocity. This uses the compute_normals method of the markerLine, 
-dv, nzv = fault.compute_normals(swarm.particleCoordinates.data, thickness=2.)
+#Now we actually set the velocity. 
+#this simply involves grabbbing the normal to the director, and mapping to mesh nodes
 
+tangentVel = marker.director[:].copy()[:,-1::-1]
 
-#this bit gets the 'normal to the markerLine normal' 
-tangentVel = dv.copy()[:,-1::-1]
 tangentVel[:,0]*=-1.  #these should be unit vectors, but a normalisation here would be good
 
 
-velocityField.data[nearbyNodesMask] =tangentVel[markerIndexes]*ndp.subVelocity
+velocityField.data[nearbyNodesMask] = tangentVel[markerIndexes]*ndp.subVelocity
 
 
 velocityField.data[tWalls.data]  = (0.,0.)
 
 
-# In[111]:
-
-#tangentVel.shape
-
-
-# In[112]:
-
-#old way
-#velocityField.data[:] = 0.
-#rotMatrix = np.array([[np.cos(-1.*np.deg2rad(ndp.theta)), -np.sin(-1.*np.deg2rad(ndp.theta)) ], 
-#                         [np.sin(-1.*np.deg2rad(ndp.theta)),  np.cos(-1.*np.deg2rad(ndp.theta))]])
-#velHat = np.dot(rotMatrix, [1.0,0.])
-#velocityField.data[nodes]= velHat*ndp.subVelocity
-
-
-# In[113]:
+# In[31]:
 
 drivenVel = mesh.specialSets["Empty"]
 drivenVel.add(nodes)
 drivenVel = drivenVel - lWalls - bWalls - rWalls - tWalls
 
 
-# In[ ]:
-
-
-
-
-# In[114]:
+# In[32]:
 
 #All the bCs
 
@@ -848,7 +751,7 @@ tempDbc = uw.conditions.DirichletCondition( variable      = temperatureField,
 
 # ## Rheology
 
-# In[115]:
+# In[33]:
 
 symStrainrate = fn.tensor.symmetric( 
                             velocityField.fn_gradient )
@@ -872,7 +775,7 @@ druckerDepthFn = fn.misc.max(0.0, depthFn + md.druckerAlpha*(dynamicPressureProx
 druckerFaultDepthFn = fn.misc.max(0.0, depthFn + md.druckerAlphaFault*(dynamicPressureProxyDepthFn))
 
 
-# In[116]:
+# In[34]:
 
 ##Mantle rheology
 diffusion = (1./ndp.diffusionPreExp)*            fn.math.exp( ((ndp.diffusionEnergy + (depthFn*ndp.diffusionVolume))/((temperatureField+  ndp.surfaceTemp))))
@@ -893,12 +796,8 @@ else:
 
 mantleViscosityFn = safe_visc(viscosity,  viscmax=ndp.viscosityMax)
 
-    
 
- 
-
-
-# In[117]:
+# In[35]:
 
 normDepths = depthFn/ndp.refDepthInterface
 interfaceCreep = ndp.refViscInterface*fn.math.exp(ndp.logDelVisc*(1. - normDepths) )
@@ -923,14 +822,7 @@ depthTaperFn = cosine_taper(depthFn, ndp.crustViscCutoffDepth, ndp.crustViscEndW
 interfaceViscosityFn =  interfaceViscosityFn*(1. - depthTaperFn) + depthTaperFn*mantleViscosityFn
 
 
-# In[118]:
-
-
-#interfaceViscosityFn = safe_visc(fn.misc.min(interfaceDiffusion, interfaceYielding), viscmin=ndp.viscosityMinInterface, viscmax=ndp.viscosityMax)
-
-
-
-# In[119]:
+# In[36]:
 
 viscosityMapFn = fn.branching.map( fn_key = proximityVariable,
                          mapping = {0:mantleViscosityFn,
@@ -947,77 +839,43 @@ viscosityMapFn = fn.branching.map( fn_key = proximityVariable,
 # secondViscosityFn  = fn.branching.map( fn_key = proximityVariable, 
 #                                        mapping = viscosity2Map )
 
-# In[120]:
+# In[37]:
 
 div = (velocityField.fn_gradient[0] + velocityField.fn_gradient[3])
 
 
-# In[121]:
-
-ndp.ysMaxInterface
-
-
-# In[139]:
+# In[90]:
 
 fig= glucifer.Figure(quality=3)
 
-#fig.append( glucifer.objects.Points(swarm,viscosityMapFn, logScale=True, pointSize=2))
-fig.append( glucifer.objects.Points(swarm, temperatureField, pointSize=1.8))
+fig.append( glucifer.objects.Points(swarm,viscosityMapFn, logScale=True, pointSize=2))
+#fig.append( glucifer.objects.Points(swarm, temperatureField, pointSize=1.8))
 fig.append( glucifer.objects.Contours(mesh,temperatureField, colours='black', interval=0.26,))
 #fig.append( glucifer.objects.Contours(mesh,initialtemperatureField, colours='blue', interval=0.26))
 #fig.append( glucifer.objects.Points(swarm, strainRate_2ndInvariant, logScale=True))
 #fig.append( glucifer.objects.Points(swarm, fn.math.dot(velocityField, velocityField)))
-#fig.append( glucifer.objects.Points(swarm, velocityField[0]))
-
-
-#fig.append( glucifer.objects.Contours(mesh,depthFn, colours='black', interval=0.33,))
-
-
-#fig.append( glucifer.objects.Points(swarm, directorVector[0], pointSize=2))
-
-#fig.append( glucifer.objects.Points(markerEvalFault, pointSize=3, colourBar=False))
-#fig.append( glucifer.objects.Points(markerEvalMantle, pointSize=3, colourBar=False))
-
-fig.append( glucifer.objects.Points(marker.swarm, pointSize=3, colourBar=False))
-
-
-#fig.append( glucifer.objects.Surface(mesh, velocityField[0], pointSize=3, discrete=True))
-#fig.append( glucifer.objects.Surface(mesh, div, pointSize=3, discrete=True))
-
-
-#fig.append( glucifer.objects.Surface(mesh, effViscLower, pointSize=3, discrete=True))
 
 fig.append( glucifer.objects.VectorArrows(mesh, upperLowerMeshVar*velocityField*0.0006, arrowHead=0.2, glyphs=3  ))
-
-
 fig.append( glucifer.objects.Mesh(mesh, opacity = 0.3  ))
-
-fig.show()
+#fig.show()
 #fig.save_image('test.png')
 
 
-# In[123]:
+# In[39]:
 
 #plt.plot(mesh.data[lWalls.data][:,1]*sf.lengthScale, depthTaperFn.evaluate(lWalls))
 #plt.plot(mesh.data[bWalls.data][:,0]*sf.lengthScale, velocityField[1].evaluate(bWalls))
 #plt.plot(mesh.data[tWalls.data][:,0]*sf.lengthScale, velocityField[0].evaluate(tWalls))
 
 
-# In[124]:
+# In[40]:
 
 uw.barrier()
 
 
-# In[125]:
-
-#%pylab inline
-
-#md.materialAdvection
-
-
 # ## Stokes
 
-# In[126]:
+# In[41]:
 
 stokesPIC = uw.systems.Stokes( velocityField  = velocityField, 
                                    pressureField  = pressureField,
@@ -1034,39 +892,12 @@ stokesPIC = uw.systems.Stokes( velocityField  = velocityField,
 #                                     _fn_viscosity2  = secondViscosityFn,
 #                                     _fn_director    = directorVector)
 
-# In[130]:
+# In[42]:
 
 solver = uw.systems.Solver(stokesPIC)
 
 
-    
-    
-    
-    
-
-
-
-# In[131]:
-
-#solver.set_penalty(1.0e7)
-#solver.set_inner_method("mumps")
-#solver.options.main.Q22_pc_type='uw'
-#solver.options.scr.ksp_rtol = 1.0e-4
-
-
-# In[ ]:
-
-
-
-
-# In[132]:
-
-#md.penaltyMethod = False
-#solver.options.main.list()
-#md.penaltyMethod
-
-
-# In[133]:
+# In[43]:
 
 
 if md.penaltyMethod:
@@ -1082,39 +913,39 @@ else:
     #solver.options.mg.levels = 5
 
 
-# In[134]:
+# In[44]:
 
 #solver.options.mg.levels
 
 
-# In[135]:
+# In[45]:
 
 print("First solve")
 
 
-# In[136]:
+# In[46]:
 
 solver.solve(nonLinearIterate=True, nonLinearTolerance=md.nltol)
 
 
-# In[61]:
-
-#md.penaltyMethod
-
-
-# In[62]:
+# In[47]:
 
 uw.barrier()
 
 
-# In[63]:
+# In[48]:
 
 print("solve done")
 
 
+# In[49]:
+
+fig.save_database('test.gldb')
+
+
 # ## Dissipative heatingFn
 
-# In[143]:
+# In[70]:
 
 #dissipative heating in terms of the sqrt. strain rate second invariant is:
 
@@ -1130,21 +961,16 @@ accumulatedTemp.data[:] = 0.
 
 # ## fault diffusivity
 
-# In[62]:
+# In[71]:
 
 diffusivityFn = fn.branching.map( fn_key = proximityVariable,
                          mapping = {0:1.,
                                     1:md.interfaceDiffusivityFac} )
 
 
-# In[63]:
-
-#md.interfaceDiffusivityFac
-
-
 # ## Advection - Diffusion
 
-# In[64]:
+# In[72]:
 
 advDiff = uw.systems.AdvectionDiffusion( phiField       = temperatureField, 
                                          phiDotField    = temperatureDotField, 
@@ -1154,7 +980,7 @@ advDiff = uw.systems.AdvectionDiffusion( phiField       = temperatureField,
                                          conditions     = [tempNbc, tempDbc] )
 
 
-# In[65]:
+# In[73]:
 
 if md.materialAdvection:
     advector = uw.systems.SwarmAdvector( swarm=swarm, velocityField=velocityField, order=2 )
@@ -1162,45 +988,68 @@ if md.materialAdvection:
 
 
 
-# In[66]:
+# In[74]:
 
 dt = advDiff.get_max_dt()*md.courantFac #additional md.courantFac helps stabilise advDiff
 advDiff.integrate(dt)
 print(dt)
 
 
-# In[67]:
+# ## Save some Xdmfs
 
-#fig= glucifer.Figure(quality=3)
+# In[75]:
 
-#fig.append( glucifer.objects.Points(swarm, viscosityMapFn, pointSize=2, logScale=True ))
-
-#fig.append( glucifer.objects.Points(swarm, proximityVariable, pointSize=0.7))
-
-#fig.append( glucifer.objects.Points(fault.swarm, pointSize=3, colourBar=False))
-#fig.append( glucifer.objects.Surface(mesh, fn.math.dot(velocityField,velocityField)))
-#fig.append( glucifer.objects.Surface(mesh, strainRate_2ndInvariant, logScale=True))
-
-#fig.append( glucifer.objects.Points(markerEvalFault , pointSize=2, colourBar=False))
-#fig.append( glucifer.objects.Points(markerEvalMantle , pointSize=2, colourBar=False))
+# Any extra mesh vars. we want to define (mostly to facilite saving as xdmf)
+strainRateField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
+viscosityField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
 
 
-#fig.append( glucifer.objects.VectorArrows(mesh, velocityField*0.0001  ))
-#fig.append( glucifer.objects.Mesh(mesh, opacity = 0.3  ))
-#fig.append( glucifer.objects.Contours( mesh, depthFn, labelFormat='', unitScaling=1.0, interval=0.2, colours='black'))
+# In[76]:
 
-#fig.show()
-#fig.save_database('test.gldb')
+def save_xdmfs(step, time):
+    
+    #define any NN interps we'll need
+    ix1, weights1, d1 = nn_evaluation(swarm.particleCoordinates.data, mesh.data, n=5, weighted=True)
+    
+    
+    #rebuild any mesh vars that are not self-updating
+    viscosityField.data[:,0] =  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix1], weights=weights1, axis=len((weights1.shape)) - 1)
+    strainRateField.data[:] = strainRate_2ndInvariant.evaluate(mesh)
+     
+    
+    fullpath = os.path.join(outputPath + "xdmf/")
+    #if not os.path.exists(fullpath+"mesh.h5"):
+    #    _mH = mesh.save(fullpath+"mesh.h5")
+    
+    try:
+        _mH
+    except:
+        _mH = mesh.save(fullpath+"mesh.h5")
+    
+    
+    #Part 1
+    mh = _mH
+    vH = velocityField.save(fullpath + "velocity_" + str(step) +".h5")
+    tH = temperatureField.save(fullpath + "temp_" + str(step) + ".h5")
+    srH = strainRateField.save(fullpath + "strainrate_" + str(step) +".h5")
+    viscH = viscosityField.save(fullpath + "visc_" + str(step) + ".h5")
+    
+    #part2
+    
+    velocityField.xdmf(fullpath + "velocity_" + str(step), vH, 'velocity', mh, 'mesh', modeltime=time)
+    temperatureField.xdmf(fullpath + "temp_" + str(step), tH, 'temperature', mh, 'mesh', modeltime=time)
+    strainRateField.xdmf(fullpath + "strainrate_" + str(step), srH, 'strainrate', mh, 'mesh', modeltime=time)
+    viscosityField.xdmf(fullpath + "visc_" + str(step), viscH, 'visc', mh, 'mesh', modeltime=time)
 
 
-# In[68]:
+# In[ ]:
 
-fig.save_database('test.gldb')
+
 
 
 # ## Equilibrium
 
-# In[69]:
+# In[77]:
 
 prevTempField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1)
 
@@ -1208,15 +1057,15 @@ prevTempField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1)
 prevTempField.data[:] = 0.
 
 
-# In[70]:
+# In[78]:
 
 def volumeint(Fn = 1., rFn=1.):
     return uw.utils.Integral( Fn*rFn,  mesh )
 
 
-# In[71]:
+# In[79]:
 
-def run_to_equil(maxIts= 4, res = 0.001 ):
+def run_to_equil(maxIts= 4, maxTime = 0.001 ):
     
     resVals = []
     count = 0
@@ -1260,8 +1109,15 @@ def run_to_equil(maxIts= 4, res = 0.001 ):
         accumulatedTemp.data[:] += dissHeatfn.evaluate(swarm)*dt
 
         
+        #save xdmfs
+        if count == 1:
+            save_xdmfs(count, (elapsedTime*sf.time)/(3600*24*365))
         
-        if delTL2 < res:
+        if count % 10 == 0:
+            save_xdmfs(count, (elapsedTime*sf.time)/(3600*24*365))
+        
+        
+        if elapsedTime > maxTime :
             #print('break', str(delTL2), str(res))
     
             break
@@ -1272,112 +1128,49 @@ def run_to_equil(maxIts= 4, res = 0.001 ):
     return resVals , times
 
 
-# In[72]:
+# In[80]:
 
-tempResiduals, times = run_to_equil(10, res = 0.00001 )
+runTimeSex = md.runTimeMa*1e6*(3600*24*365)
+runTime = runTimeSex/sf.time
 
 
-# In[73]:
+# In[82]:
+
+tempResiduals, times = run_to_equil(200, maxTime= runTime)
+
+
+# In[83]:
 
 (times[-1]*sf.time)/(3600*24*365)
 
 
-# In[75]:
+# In[84]:
 
-tmy = (np.array(times)*sf.time)*1e-6/(3600*24*365)
-
-
-# In[76]:
-
-get_ipython().magic(u'pylab inline')
-fig, ax = plt.subplots()
-ax.plot(tmy , tempResiduals)
+#%pylab inline
+#fig, ax = plt.subplots()
+#ax.plot(tmy , tempResiduals)
 #ax.hlines(tempResiduals[-1], 0, len(tempResiduals))
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# ## Save some Xdmfs
-
-# In[65]:
-
-# Any extra mesh vars. we want to define (mostly to facilite saving as xdmf)
-strainRateField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
-viscosityField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
-
-
-# In[66]:
-
-def save_xdmfs():
-    
-    #define any NN interps we'll need
-    ix1, weights1, d1 = nn_evaluation(swarm.particleCoordinates.data, mesh.data, n=5, weighted=True)
-    
-    
-    #rebuild any mesh vars that are not self-updating
-    viscosityField.data[:,0] =  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix1], weights=weights1, axis=len((weights1.shape)) - 1)
-    strainRateField.data[:] = strainRate_2ndInvariant.evaluate(mesh)
-     
-    
-    fullpath = os.path.join(outputPath + "xdmf/")
-    #if not os.path.exists(fullpath+"mesh.h5"):
-    #    _mH = mesh.save(fullpath+"mesh.h5")
-    
-    try:
-        _mH
-    except:
-        _mH = mesh.save(fullpath+"mesh.h5")
-    
-    
-    #Part 1
-    mh = _mH
-    vH = velocityField.save(fullpath + "velocity_" + str(step) +".h5")
-    tH = temperatureField.save(fullpath + "temp_" + str(step) + ".h5")
-    srH = strainRateField.save(fullpath + "strainrate_" + str(step) +".h5")
-    viscH = viscosityField.save(fullpath + "visc_" + str(step) + ".h5")
-    
-    #part2
-    
-    velocityField.xdmf(fullpath + "velocity_" + str(step), vH, 'velocity', mh, 'mesh', modeltime=time)
-    temperatureField.xdmf(fullpath + "temp_" + str(step), tH, 'temperature', mh, 'mesh', modeltime=time)
-    strainRateField.xdmf(fullpath + "strainrate_" + str(step), srH, 'strainrate', mh, 'mesh', modeltime=time)
-    viscosityField.xdmf(fullpath + "visc_" + str(step), viscH, 'visc', mh, 'mesh', modeltime=time)
-
-
-# In[71]:
-
-step = 0
-time = times[-1]
-#time = 0
-save_xdmfs()
 
 
 # ## Adiabatic temp
 
 # $\tilde T = (T_0 − T_s )T + T_s + T_a exp(Di \times z) − T_a$
 
-# In[556]:
+# In[85]:
 
 dimTemp = dp.deltaTemp*temperatureField + dp.surfaceTemp + dp.potentialTemp*fn.math.exp(ndp.dissipation*depthFn) - dp.potentialTemp
 
 
 # ## Critical temperature analysis
 
-# In[558]:
+# In[86]:
 
 TC_K0 = 1250 + 273.
+
 TC_K1 = 1300 + 273.
 
 
-# In[562]:
+# In[87]:
 
 conditions = [ (operator.and_(dimTemp > TC_K0, dimTemp < TC_K1), 1.),
                    (                      True , 0.  ) ]
@@ -1385,28 +1178,19 @@ conditions = [ (operator.and_(dimTemp > TC_K0, dimTemp < TC_K1), 1.),
 critTempFn = fn.branching.conditional( conditions )
 
 
-# In[564]:
+# In[92]:
 
-get_ipython().magic(u'pinfo glucifer.objects.Contours')
+figTemp= glucifer.Figure(quality=3)
 
+figTemp.append( glucifer.objects.Points(swarm, critTempFn , pointSize=2))
 
-# In[567]:
-
-fig= glucifer.Figure(quality=3)
-
-fig.append( glucifer.objects.Points(swarm, critTempFn , pointSize=2))
-
-#fig.append( glucifer.objects.Surface(mesh, pressureField,valueRange=[-1e3, 1e3], pointSize=1))
-#fig.append( glucifer.objects.Surface( mesh, dimTemp, labelFormat=''))
-#fig.append( glucifer.objects.Surface( mesh, strainRate_2ndInvariant, labelFormat=''))
-
-fig.append( glucifer.objects.Contours( mesh, dimTemp, labelFormat='', unitScaling=1.0, interval=400))
+figTemp.append( glucifer.objects.Contours( mesh, dimTemp, labelFormat='', unitScaling=1.0, interval=400))
 
 fig.append( glucifer.objects.Contours( mesh, depthFn, labelFormat='', unitScaling=1.0, interval=0.25, colours='black'))
 
 
-fig.show()
-#fig.save_database('test.gldb')
+#figTemp.show()
+#figTemp.save_database('test.gldb')
 
 
 # %pylab inline
@@ -1423,10 +1207,10 @@ fig.show()
 
 # ## Get data along fault points
 
-# In[292]:
+# In[144]:
 
 ds = ndp.faultThickness/2.
-evalPoints0 = fault.swarm.particleCoordinates.data + fault.director.data[...]*ds
+evalPoints0 = fault.particleCoordinates + fault.director[...]*ds
 
 #Create the temp Swarm
 markerEvalFault = uw.swarm.Swarm( mesh=mesh )
@@ -1435,19 +1219,19 @@ catch = markerEvalFault.add_particles_with_coordinates(evalPoints0)
 
 
 ds = ndp.faultThickness/2.
-evalPoints1 = fault.swarm.particleCoordinates.data - fault.director.data[...]*ds
+evalPoints1 = fault.particleCoordinates  - fault.director[...]*ds
 #Create the temp Swarm
 markerEvalMantle = uw.swarm.Swarm( mesh=mesh )
 catch = markerEvalMantle.add_particles_with_coordinates(evalPoints1)
 
 
-# In[293]:
+# In[145]:
 
 #create velocity magnitude fn
 velMagFn = uw.function.math.sqrt( uw.function.math.dot( velocityField, velocityField ) )
 
 
-# In[458]:
+# In[146]:
 
 #use a weighted interpolation
 
@@ -1477,7 +1261,7 @@ mantleVelMag = velMagFn.evaluate(markerEvalMantle)[:,0]
 
 
 
-# In[459]:
+# In[147]:
 
 def save_files():
     
@@ -1513,100 +1297,86 @@ def save_files():
     mantleSr.save( fullpath + "mantleSr" + str(step).zfill(5))
 
 
-# In[460]:
+# In[148]:
 
 save_files()
 
 
-# In[461]:
+# %pylab inline
+# fig, ax = plt.subplots()
+# 
+# ax.plot(faultVelMag, 
+#         (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface'  )
+# ax.plot(mantleVelMag, 
+#         (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
+# 
+# 
+# ax.plot()
+# 
+# ax.set_ylim(400, 0)
+# #ax.set_xlim(0, 50)
+# ax.legend()
+# 
 
-get_ipython().magic(u'pylab inline')
-fig, ax = plt.subplots()
+# %pylab inline
+# fig, ax = plt.subplots()
+# 
+# ax.plot((2.*faultViscData*faultSr2InvData)*sf.stress/1e6, 
+#         (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface', lw=0.5  )
+# ax.plot((2.*mantleViscData*mantleSr2InvData)*sf.stress/1e6, 
+#         (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge', lw=0.5  )
+# 
+# 
+# ax.plot()
+# 
+# ax.set_ylim(300, 0)
+# #ax.set_xlim(0, 1000)
+# ax.legend()
+# ax.set_xscale('log')
 
-ax.plot(faultVelMag, 
-        (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface'  )
-ax.plot(mantleVelMag, 
-        (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
+# fig, ax = plt.subplots()
+# 
+# ax.plot(temperatureField.evaluate(markerEvalFault)[:,0],
+#          (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface' )
+# 
+# ax.plot(temperatureField.evaluate(markerEvalMantle)[:,0],
+#          (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
+# 
+# ax.plot()
+# 
+# ax.set_ylim(400, 0)
+# #ax.set_xlim(0, 200)
+# ax.legend()
 
+# fig, ax = plt.subplots()
+# 
+# ax.plot(faultViscData,
+#          (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface' )
+# 
+# ax.plot(mantleViscData,
+#          (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
+# 
+# ax.plot()
+# 
+# ax.set_ylim(400, 0)
+# #ax.set_xlim(0, 20)
+# ax.set_xscale('log')
+# ax.legend()
 
-ax.plot()
-
-ax.set_ylim(400, 0)
-#ax.set_xlim(0, 50)
-ax.legend()
-
-
-# In[467]:
-
-get_ipython().magic(u'pylab inline')
-fig, ax = plt.subplots()
-
-ax.plot((2.*faultViscData*faultSr2InvData)*sf.stress/1e6, 
-        (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface', lw=0.5  )
-ax.plot((2.*mantleViscData*mantleSr2InvData)*sf.stress/1e6, 
-        (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge', lw=0.5  )
-
-
-ax.plot()
-
-ax.set_ylim(300, 0)
-#ax.set_xlim(0, 1000)
-ax.legend()
-ax.set_xscale('log')
-
-
-# In[468]:
-
-fig, ax = plt.subplots()
-
-ax.plot(temperatureField.evaluate(markerEvalFault)[:,0],
-         (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface' )
-
-ax.plot(temperatureField.evaluate(markerEvalMantle)[:,0],
-         (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
-
-ax.plot()
-
-ax.set_ylim(400, 0)
-#ax.set_xlim(0, 200)
-ax.legend()
-
-
-# In[469]:
-
-fig, ax = plt.subplots()
-
-ax.plot(faultViscData,
-         (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface' )
-
-ax.plot(mantleViscData,
-         (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
-
-ax.plot()
-
-ax.set_ylim(400, 0)
-#ax.set_xlim(0, 20)
-ax.set_xscale('log')
-ax.legend()
-
-
-# In[470]:
-
-fig, ax = plt.subplots()
-
-ax.plot(faultSr2InvData,
-         (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface' )
-
-ax.plot(mantleSr2InvData,
-         (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
-
-ax.plot()
-
-ax.set_ylim(400, 0)
-#ax.set_xlim(0, 200)
-ax.set_xscale('log')
-ax.legend()
-
+# fig, ax = plt.subplots()
+# 
+# ax.plot(faultSr2InvData,
+#          (1. - markerEvalFault.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'interface' )
+# 
+# ax.plot(mantleSr2InvData,
+#          (1. - markerEvalMantle.particleCoordinates.data[:,1])*sf.lengthScale/1e3, label = 'wedge' )
+# 
+# ax.plot()
+# 
+# ax.set_ylim(400, 0)
+# #ax.set_xlim(0, 200)
+# ax.set_xscale('log')
+# ax.legend()
 
 # In[ ]:
 
