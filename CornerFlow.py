@@ -1124,6 +1124,7 @@ def run_to_equil(maxIts= 4, maxTime = 0.001 ):
             
         print('step :', str(count ))
         print('residual val :', str(delTL2))
+        print('time Ma :', str((elapsedTime*sf.time)/(3600*24*365)))
         
     return resVals , times
 
