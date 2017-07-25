@@ -1111,10 +1111,10 @@ def run_to_equil(maxIts= 4, maxTime = 0.001 ):
         
         #save xdmfs
         if count == 1:
-            save_xdmfs(count, (elapsedTime*sf.time)/(3600*24*365))
+            save_xdmfs(count, elapsedTime)
         
         if count % 10 == 0:
-            save_xdmfs(count, (elapsedTime*sf.time)/(3600*24*365))
+            save_xdmfs(count, elapsedTime)
         
         
         if elapsedTime > maxTime :
