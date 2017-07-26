@@ -203,7 +203,8 @@ md.interfaceDiffusivityFac = 1.
 md.materialAdvection=False
 md.wedgeType = 1  #1 is a triangular wedge, 2 is a curved / linear slab defined by params in dp.
 md.plasticInterface = False
-md.runTimeMa = 10.
+md.equilTimeMa = 5.
+md.equilSteps = 1000
 
 
 
@@ -1162,13 +1163,13 @@ def run_to_equil(maxIts= 4, maxTime = 0.001 ):
 
 # In[80]:
 
-runTimeSex = md.runTimeMa*1e6*(3600*24*365)
+runTimeSex = md.equilTimeMa*1e6*(3600*24*365)
 runTime = runTimeSex/sf.time
 
 
 # In[82]:
 
-tempResiduals, times = run_to_equil(2, maxTime= runTime)
+tempResiduals, times = run_to_equil(md.equilSteps, maxTime= runTime)
 
 
 # In[83]:
