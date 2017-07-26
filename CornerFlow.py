@@ -10,7 +10,7 @@
 # 
 # <a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />
 
-# In[1]:
+# In[2]:
 
 import numpy as np
 import underworld as uw
@@ -29,7 +29,7 @@ import pickle
 
 
 
-# In[2]:
+# In[3]:
 
 #this does't actually need to be protected. More a reminder it's an interim measure
 try:
@@ -39,7 +39,7 @@ except:
     pass
 
 
-# In[3]:
+# In[4]:
 
 #
 from unsupported_dan.utilities.interpolation import nn_evaluation
@@ -52,7 +52,7 @@ from unsupported_dan.utilities.subduction import slab_top
 
 # ## Setup out Dirs
 
-# In[4]:
+# In[5]:
 
 ############
 #Model letter and number
@@ -80,7 +80,7 @@ else:
                 Model  = farg
 
 
-# In[5]:
+# In[6]:
 
 ###########
 #Standard output directory setup
@@ -112,7 +112,7 @@ uw.barrier() #Barrier here so no procs run the check in the next cell too early
 
 # ## Params
 
-# In[51]:
+# In[7]:
 
 dp = edict({})
 #Main physical paramters
@@ -207,7 +207,7 @@ md.runTimeMa = 10.
 
 
 
-# In[7]:
+# In[8]:
 
 ##Parse any command-line args
 
@@ -219,7 +219,7 @@ easy_args(sysArgs, dp)
 easy_args(sysArgs, md)
 
 
-# In[8]:
+# In[9]:
 
 sf = edict({})
 
@@ -238,7 +238,7 @@ sf.deltaTemp  = dp.deltaTemp
 sf.pressureDepthGrad = (dp.refDensity*dp.refGravity*sf.lengthScale**3)/(dp.viscosityScale*dp.refDiffusivity)
 
 
-# In[9]:
+# In[10]:
 
 #dimesionless params
 ndp  = edict({})
@@ -307,9 +307,9 @@ ndp.subVelocity = dp.subVelocity/sf.velocity
 
 # ## Build the slab top function, 
 # 
-# This creates a function that follows a circular arc until the crossOverDepth, after which a consant slope.
+# This creates a function that follows a circular arc until the crossOverDepth, after which a constant slope.
 
-# In[10]:
+# In[11]:
 
 if ndp.crossOverDepth > ndp.radiusOfCurv:
     ndp.crossOverDepth = ndp.radiusOfCurv - 1e-3
@@ -336,7 +336,7 @@ vslabFn= np.vectorize(slabFn)
 # 
 # ## Make mesh / FeVariables
 
-# In[11]:
+# In[12]:
 
 #Domain and Mesh paramters
 yres = int(md.res)
@@ -362,7 +362,7 @@ diffusivityFn = fn.misc.constant(1.)
     
 
 
-# In[12]:
+# In[13]:
 
 velocityField.data[:] = 0.
 pressureField.data[:] = 0.
@@ -370,7 +370,7 @@ temperatureField.data[:] = 0.
 initialtemperatureField.data[:] = 0.
 
 
-# In[13]:
+# In[14]:
 
 #Uw geometry shortcuts
 
@@ -384,7 +384,7 @@ yFn = coordinate[1]
 
 # ## Swarm
 
-# In[14]:
+# In[15]:
 
 swarm = uw.swarm.Swarm(mesh=mesh, particleEscape=True)
 materialVariable      = swarm.add_variable( dataType="int", count=1 )
@@ -393,7 +393,7 @@ layout = uw.swarm.layouts.PerCellRandomLayout(swarm=swarm, particlesPerCell=int(
 swarm.populate_using_layout( layout=layout ) # Now use it to populate.
 
 
-# In[15]:
+# In[16]:
 
 proximityVariable      = swarm.add_variable( dataType="int", count=1 )
 signedDistanceVariable = swarm.add_variable( dataType="double", count=1 )
@@ -409,7 +409,7 @@ proximityVariable.data[:] = 0
 signedDistanceVariable.data[:] = 0.0
 
 
-# In[16]:
+# In[17]:
 
 #swarm.particleGlobalCount
 
@@ -418,7 +418,7 @@ signedDistanceVariable.data[:] = 0.0
 # 
 # We build a markerLine object to help set up the temperature stencil and the subduction interface
 
-# In[17]:
+# In[18]:
 
 #Create some slab gradient functions to use with slab_top()
 
@@ -453,7 +453,7 @@ def mixedGradientFn(S):
         return slopeCrossOver
 
 
-# In[18]:
+# In[19]:
 
 #choose the type of slab shape to use
 
@@ -464,7 +464,7 @@ elif md.wedgeType == 2:
     gradFn = mixedGradientFn
 
 
-# In[19]:
+# In[20]:
 
 #create the fault
 
@@ -477,7 +477,7 @@ fault = globalLine2D(mesh, velocityField, faultData[:,0] , faultData[:,1] , ndp.
 
 
 
-# In[20]:
+# In[21]:
 
 #also create another marker line to help to refine the mesh
 #this one sits at the bottom of the weak zone
@@ -488,7 +488,7 @@ markerData = faultData + fault.director[:]*ndp.faultThickness
 marker = globalLine2D(mesh, velocityField, markerData[:,0] , markerData[:,1] , ndp.faultThickness, 1.)
 
 
-# In[21]:
+# In[22]:
 
 #This block sets a number of variables that we'll used to define / control the fault geom
 
@@ -525,7 +525,7 @@ projectorMisc.solve()
 # 
 # The temperature stencil is set using a depth / distance field (and a cooling model), which follows the curve of the slab into the mantle.
 
-# In[22]:
+# In[23]:
 
 #this  is a correction for wedge-like slabs, or any slabs that do not intersect the surface at 0 degree dip
 angleCorrect = 1./(np.sin(np.deg2rad(90. - np.abs(np.rad2deg(np.arctan(gradFn(0.)))))))
@@ -539,7 +539,7 @@ distFn = fn.branching.conditional( conditions )
 
 # ## Temp. Field
 
-# In[23]:
+# In[24]:
 
 proxyTempVariable = uw.swarm.SwarmVariable(swarm, 'double', 1)
 
@@ -551,7 +551,7 @@ tempFn = fn.branching.conditional( conditions )
 proxyTempVariable.data[:] = tempFn.evaluate(swarm)
 
 
-# In[24]:
+# In[25]:
 
 ix0, weights0, d0 = nn_evaluation(swarm.particleCoordinates.data, 
                                   mesh.data , n=200, weighted=False)
@@ -567,7 +567,7 @@ initialtemperatureField.data[:,0] =  np.average(tempFn.evaluate(swarm)[:,0][ix0]
 # Here I use proximity to a marker line to define nodes to adjust. The nodes effectivey sit right on yhe marker line and become the nodes we impose velocity on.
 # 
 
-# In[25]:
+# In[26]:
 
 #This value seems to provide good results for a square mesh.
 #We end up with at least one node in every element lying on the interface
@@ -606,7 +606,7 @@ with mesh.deform_mesh():
 
 
 
-# In[91]:
+# In[27]:
 
 fig= glucifer.Figure()
 #fig= glucifer.Figure(quality=3)
@@ -632,7 +632,7 @@ fig.append( glucifer.objects.Mesh(mesh, opacity=0.4))
 
 # ## Boundary Conditions
 
-# In[27]:
+# In[28]:
 
 iWalls = mesh.specialSets["MinI_VertexSet"] + mesh.specialSets["MaxI_VertexSet"]
 jWalls = mesh.specialSets["MinJ_VertexSet"] + mesh.specialSets["MaxJ_VertexSet"]
@@ -646,7 +646,7 @@ rWalls = mesh.specialSets["MaxI_VertexSet"]
 
 # ### Temp BCs
 
-# In[28]:
+# In[29]:
 
 #make sure tempBcs are set exactly on mesh BCs
 
@@ -665,7 +665,7 @@ del fTright
 
 # ### Velocity BCs
 
-# In[29]:
+# In[30]:
 
 nodes = nearbyNodesMask 
 
@@ -698,7 +698,7 @@ nodes = nearbyNodesMask
 # except:
 #     pass
 
-# In[30]:
+# In[31]:
 
 #Now we actually set the velocity. 
 #this simply involves grabbbing the normal to the director, and mapping to mesh nodes
@@ -714,14 +714,14 @@ velocityField.data[nearbyNodesMask] = tangentVel[markerIndexes]*ndp.subVelocity
 velocityField.data[tWalls.data]  = (0.,0.)
 
 
-# In[31]:
+# In[32]:
 
 drivenVel = mesh.specialSets["Empty"]
 drivenVel.add(nodes)
 drivenVel = drivenVel - lWalls - bWalls - rWalls - tWalls
 
 
-# In[32]:
+# In[33]:
 
 #All the bCs
 
@@ -751,7 +751,7 @@ tempDbc = uw.conditions.DirichletCondition( variable      = temperatureField,
 
 # ## Rheology
 
-# In[33]:
+# In[34]:
 
 symStrainrate = fn.tensor.symmetric( 
                             velocityField.fn_gradient )
@@ -775,7 +775,7 @@ druckerDepthFn = fn.misc.max(0.0, depthFn + md.druckerAlpha*(dynamicPressureProx
 druckerFaultDepthFn = fn.misc.max(0.0, depthFn + md.druckerAlphaFault*(dynamicPressureProxyDepthFn))
 
 
-# In[34]:
+# In[35]:
 
 ##Mantle rheology
 diffusion = (1./ndp.diffusionPreExp)*            fn.math.exp( ((ndp.diffusionEnergy + (depthFn*ndp.diffusionVolume))/((temperatureField+  ndp.surfaceTemp))))
@@ -797,7 +797,7 @@ else:
 mantleViscosityFn = safe_visc(viscosity,  viscmax=ndp.viscosityMax)
 
 
-# In[35]:
+# In[36]:
 
 normDepths = depthFn/ndp.refDepthInterface
 interfaceCreep = ndp.refViscInterface*fn.math.exp(ndp.logDelVisc*(1. - normDepths) )
@@ -822,7 +822,7 @@ depthTaperFn = cosine_taper(depthFn, ndp.crustViscCutoffDepth, ndp.crustViscEndW
 interfaceViscosityFn =  interfaceViscosityFn*(1. - depthTaperFn) + depthTaperFn*mantleViscosityFn
 
 
-# In[36]:
+# In[37]:
 
 viscosityMapFn = fn.branching.map( fn_key = proximityVariable,
                          mapping = {0:mantleViscosityFn,
@@ -839,12 +839,12 @@ viscosityMapFn = fn.branching.map( fn_key = proximityVariable,
 # secondViscosityFn  = fn.branching.map( fn_key = proximityVariable, 
 #                                        mapping = viscosity2Map )
 
-# In[37]:
+# In[38]:
 
 div = (velocityField.fn_gradient[0] + velocityField.fn_gradient[3])
 
 
-# In[90]:
+# In[39]:
 
 fig= glucifer.Figure(quality=3)
 
@@ -861,14 +861,14 @@ fig.append( glucifer.objects.Mesh(mesh, opacity = 0.3  ))
 #fig.save_image('test.png')
 
 
-# In[39]:
+# In[40]:
 
 #plt.plot(mesh.data[lWalls.data][:,1]*sf.lengthScale, depthTaperFn.evaluate(lWalls))
 #plt.plot(mesh.data[bWalls.data][:,0]*sf.lengthScale, velocityField[1].evaluate(bWalls))
 #plt.plot(mesh.data[tWalls.data][:,0]*sf.lengthScale, velocityField[0].evaluate(tWalls))
 
 
-# In[40]:
+# In[41]:
 
 uw.barrier()
 
@@ -945,7 +945,7 @@ fig.save_database('test.gldb')
 
 # ## Dissipative heatingFn
 
-# In[70]:
+# In[50]:
 
 #dissipative heating in terms of the sqrt. strain rate second invariant is:
 
@@ -961,7 +961,7 @@ accumulatedTemp.data[:] = 0.
 
 # ## fault diffusivity
 
-# In[71]:
+# In[51]:
 
 diffusivityFn = fn.branching.map( fn_key = proximityVariable,
                          mapping = {0:1.,
@@ -970,7 +970,7 @@ diffusivityFn = fn.branching.map( fn_key = proximityVariable,
 
 # ## Advection - Diffusion
 
-# In[72]:
+# In[52]:
 
 advDiff = uw.systems.AdvectionDiffusion( phiField       = temperatureField, 
                                          phiDotField    = temperatureDotField, 
@@ -980,7 +980,7 @@ advDiff = uw.systems.AdvectionDiffusion( phiField       = temperatureField,
                                          conditions     = [tempNbc, tempDbc] )
 
 
-# In[73]:
+# In[53]:
 
 if md.materialAdvection:
     advector = uw.systems.SwarmAdvector( swarm=swarm, velocityField=velocityField, order=2 )
@@ -988,23 +988,54 @@ if md.materialAdvection:
 
 
 
-# In[74]:
+# In[54]:
 
 dt = advDiff.get_max_dt()*md.courantFac #additional md.courantFac helps stabilise advDiff
 advDiff.integrate(dt)
 print(dt)
 
 
-# ## Save some Xdmfs
+# ## Function to get surface heat flow
 
-# In[75]:
+# In[48]:
+
+surfacexs = np.linspace(mesh.minCoord[0], mesh.maxCoord[0], md.res*md.aspectRatio*3)
+surfaceys = np.ones(surfacexs.shape[0])*0.9999
+surfaceSwarm = uw.swarm.Swarm( mesh=mesh )
+surfaceSwarm.add_particles_with_coordinates(np.column_stack((surfacexs, surfaceys)))
+
+dTdYVar= surfaceSwarm.add_variable( dataType="double", count=1 )
+
+delTyField = temperatureField.fn_gradient 
+
+dTdYVar.data[:] = delTyField[1].evaluate(surfaceSwarm)
+
+
+# In[51]:
+
+def save_surface(step):
+    #Save the files:
+    fullpath = os.path.join(outputPath + "files/")
+    #fault
+    surfaceSwarm.save( fullpath + "surfaceSwarm" + str(step).zfill(5))
+    dTdYVar.save( fullpath + "surfaceHeat" + str(step).zfill(5))
+
+
+# In[52]:
+
+#save_surface(0)
+
+
+# ## Funtion to save Xdmfs
+
+# In[56]:
 
 # Any extra mesh vars. we want to define (mostly to facilite saving as xdmf)
 strainRateField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
 viscosityField    = uw.mesh.MeshVariable( mesh=mesh,         nodeDofCount=1 )
 
 
-# In[76]:
+# In[57]:
 
 def save_xdmfs(step, time):
     
@@ -1042,11 +1073,6 @@ def save_xdmfs(step, time):
     viscosityField.xdmf(fullpath + "visc_" + str(step), viscH, 'visc', mh, 'mesh', modeltime=time)
 
 
-# In[ ]:
-
-
-
-
 # ## Equilibrium
 
 # In[77]:
@@ -1068,7 +1094,7 @@ def volumeint(Fn = 1., rFn=1.):
 def run_to_equil(maxIts= 4, maxTime = 0.001 ):
     
     resVals = []
-    count = 0
+    step= 0
     times = []
     elapsedTime = 0
     
@@ -1101,7 +1127,7 @@ def run_to_equil(maxIts= 4, maxTime = 0.001 ):
         delTL2 = np.sqrt(_Tr.evaluate()[0])
         
         resVals.append(delTL2)
-        count += 1
+        step += 1
         elapsedTime += dt
         times.append(elapsedTime)
         
@@ -1109,20 +1135,25 @@ def run_to_equil(maxIts= 4, maxTime = 0.001 ):
         accumulatedTemp.data[:] += dissHeatfn.evaluate(swarm)*dt
 
         
-        #save xdmfs
-        if count == 1:
-            save_xdmfs(count, elapsedTime)
+        #save xdmfs / files
+        if step == 1:
+            save_xdmfs(step, elapsedTime)
+            save_surface(step) 
         
-        if count % 10 == 0:
-            save_xdmfs(count, elapsedTime)
+        if step % 10 == 0:
+            save_xdmfs(step, elapsedTime)
+            save_surface(step)
+            
+        #Save surface heat flow    
+          
         
-        
+        #stop if elapsed time reached
         if elapsedTime > maxTime :
             #print('break', str(delTL2), str(res))
     
             break
             
-        print('step :', str(count ))
+        print('step :', str(step ))
         print('residual val :', str(delTL2))
         print('time Ma :', str((elapsedTime*sf.time)/(3600*24*365)))
         
@@ -1137,7 +1168,7 @@ runTime = runTimeSex/sf.time
 
 # In[82]:
 
-tempResiduals, times = run_to_equil(200, maxTime= runTime)
+tempResiduals, times = run_to_equil(2, maxTime= runTime)
 
 
 # In[83]:
@@ -1208,7 +1239,7 @@ fig.append( glucifer.objects.Contours( mesh, depthFn, labelFormat='', unitScalin
 
 # ## Get data along fault points
 
-# In[144]:
+# In[54]:
 
 ds = ndp.faultThickness/2.
 evalPoints0 = fault.particleCoordinates + fault.director[...]*ds
@@ -1226,35 +1257,89 @@ markerEvalMantle = uw.swarm.Swarm( mesh=mesh )
 catch = markerEvalMantle.add_particles_with_coordinates(evalPoints1)
 
 
-# In[145]:
+# In[55]:
 
 #create velocity magnitude fn
 velMagFn = uw.function.math.sqrt( uw.function.math.dot( velocityField, velocityField ) )
 
 
-# In[146]:
-
-#use a weighted interpolation
-
-ix1, weights1, d1 = nn_evaluation(swarm.particleCoordinates.data, 
-                                  markerEvalFault.particleCoordinates.data , n=5, weighted=True)
+# In[59]:
 
 
-if len(weights1):
-    faultViscData=  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix1], weights=weights1, axis=len((weights1.shape)) - 1)
-faultSr2InvData = strainRate_2ndInvariant.evaluate(markerEvalFault)[:,0]
-faultVelMag = velMagFn.evaluate(markerEvalFault)[:,0]
 
 
-#use a weighted interpolation
+# In[60]:
 
-ix2, weights2, d2 = nn_evaluation(swarm.particleCoordinates.data, 
-                                  markerEvalMantle.particleCoordinates.data , n=5, weighted=True)
+#faultVisc = uw.swarm.SwarmVariable(markerEvalFault, 'double', 1)
 
-if len(weights2):
-    mantleViscData=  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix2], weights=weights2, axis=len((weights2.shape)) - 1)
-mantleSr2InvData = strainRate_2ndInvariant.evaluate(markerEvalMantle)[:,0]
-mantleVelMag = velMagFn.evaluate(markerEvalMantle)[:,0]
+
+# In[62]:
+
+#faultVisc.data[:,0] = faultViscData
+
+
+# In[76]:
+
+def save_files():
+    
+    #update info
+    ix1, weights1, d1 = nn_evaluation(swarm.particleCoordinates.data, 
+                                      markerEvalFault.particleCoordinates.data , n=5, weighted=True)
+    
+    faultPoints = uw.swarm.SwarmVariable(markerEvalFault, 'double', 2)
+    faultVisc = uw.swarm.SwarmVariable(markerEvalFault, 'double', 1)
+    faultSr = uw.swarm.SwarmVariable(markerEvalFault, 'double', 1)
+    faultVelMag = uw.swarm.SwarmVariable(markerEvalFault, 'double', 1)
+
+
+    faultPoints.data[:] = markerEvalFault.particleCoordinates.data
+    if len(weights1):
+        faultVisc.data[:,0]=  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix1], 
+                                       weights=weights1, axis=len((weights1.shape)) - 1)
+    faultSr.data[:]= strainRate_2ndInvariant.evaluate(markerEvalFault)
+    faultVelMag.data[:] = velMagFn.evaluate(markerEvalFault)
+
+    #use a weighted interpolation
+
+    ix2, weights2, d2 = nn_evaluation(swarm.particleCoordinates.data, 
+                                      markerEvalMantle.particleCoordinates.data , n=5, weighted=True)
+    
+    mantlePoints = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 2)
+    mantleVisc = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 1)
+    mantleSr = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 1)
+    mantleVelMag = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 1)
+    
+    
+    mantlePoints.data[:] = markerEvalMantle.particleCoordinates.data
+    if len(weights2):
+        mantleVisc.data[:,0]=  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix2], weights=weights2, axis=len((weights2.shape)) - 1)
+    mantleSr.data[:] = strainRate_2ndInvariant.evaluate(markerEvalMantle)
+    mantleVelMag.data[:] = velMagFn.evaluate(markerEvalMantle)
+    
+
+    
+    #Save the files:
+    fullpath = os.path.join(outputPath + "files/")
+    #fault
+    step = 'xx'
+    
+    faultPoints.save( fullpath + "faultPoints" + str(step).zfill(2))
+    faultVisc.save( fullpath + "faultVisc" + str(step).zfill(2))
+    faultSr.save( fullpath + "faultSr" + str(step).zfill(2))
+    faultVelMag.save( fullpath + "faultVelMag" + str(step).zfill(2))
+
+    #fault
+    mantlePoints.save( fullpath + "mantlePoints" + str(step).zfill(2))
+    mantleVisc.save( fullpath + "mantleVisc" + str(step).zfill(2))
+    mantleSr.save( fullpath + "mantleSr" + str(step).zfill(2))
+    mantleVelMag.save( fullpath + "mantleVelMag" + str(step).zfill(2))
+
+
+# In[71]:
+
+uw.barrier()
+print("trying to save files")
+uw.barrier()
 
 
 # In[ ]:
@@ -1262,46 +1347,32 @@ mantleVelMag = velMagFn.evaluate(markerEvalMantle)[:,0]
 
 
 
-# In[147]:
-
-def save_files():
-    
-    faultPoints = uw.swarm.SwarmVariable(markerEvalFault, 'double', 2)
-    faultVisc = uw.swarm.SwarmVariable(markerEvalFault, 'double', 1)
-    faultSr = uw.swarm.SwarmVariable(markerEvalFault, 'double', 1)
-    
-    faultPoints.data[:] = markerEvalFault.particleCoordinates.data
-    faultVisc.data[:,0] = faultViscData
-    faultSr.data[:,0] = faultSr2InvData
-    #
-    
-
-    mantlePoints = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 2)
-    mantleVisc = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 1)
-    mantleSr = uw.swarm.SwarmVariable(markerEvalMantle, 'double', 1)
-    
-    mantlePoints.data[:] = markerEvalMantle.particleCoordinates.data
-    mantleVisc.data[:,0] = mantleViscData
-    mantleSr.data[:,0] = mantleSr2InvData
-
-    
-    #Save the files:
-    fullpath = os.path.join(outputPath + "files/")
-    #fault
-    faultPoints.save( fullpath + "faultPoints" + str(step).zfill(5))
-    faultVisc.save( fullpath + "faultVisc" + str(step).zfill(5))
-    faultSr.save( fullpath + "faultSr" + str(step).zfill(5))
-    
-    #fault
-    mantlePoints.save( fullpath + "mantlePoints" + str(step).zfill(5))
-    mantleVisc.save( fullpath + "mantleVisc" + str(step).zfill(5))
-    mantleSr.save( fullpath + "mantleSr" + str(step).zfill(5))
-
-
-# In[148]:
+# In[72]:
 
 save_files()
 
+
+# ## Serial plots
+
+# #update info
+# ix1, weights1, d1 = nn_evaluation(swarm.particleCoordinates.data, 
+#                                   markerEvalFault.particleCoordinates.data , n=5, weighted=True)
+# 
+# 
+# if len(weights1):
+#     faultViscData=  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix1], weights=weights1, axis=len((weights1.shape)) - 1)
+# faultSr2InvData = strainRate_2ndInvariant.evaluate(markerEvalFault)
+# faultVelMag = velMagFn.evaluate(markerEvalFault)
+# 
+# #use a weighted interpolation
+# 
+# ix2, weights2, d2 = nn_evaluation(swarm.particleCoordinates.data, 
+#                                   markerEvalMantle.particleCoordinates.data , n=5, weighted=True)
+# 
+# if len(weights2):
+#     mantleViscData=  np.average(viscosityMapFn.evaluate(swarm)[:,0][ix2], weights=weights2, axis=len((weights2.shape)) - 1)
+# mantleSr2InvData = strainRate_2ndInvariant.evaluate(markerEvalMantle)
+# mantleVelMag = velMagFn.evaluate(markerEvalMantle)
 
 # %pylab inline
 # fig, ax = plt.subplots()

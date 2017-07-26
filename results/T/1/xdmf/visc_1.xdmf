@@ -3,42 +3,42 @@
 <Domain>
 <Grid Name="FEM_Mesh_mesh">
 
-	<Time Value="30171.6935597" />
+	<Time Value="6.45847503602e-06" />
 
-	<Topology Type="Quadrilateral" NumberOfElements="7776">
-		<DataItem ItemType="Function" Dimensions="7776 4" Function="JOIN($0, $1, $3, $2)">
-		<DataItem ItemType="HyperSlab" Dimensions="7776 1" Name="C0">
-				<DataItem Dimensions="3 2" Format="XML"> 0 0 1 1 7776 1 </DataItem>
-				<DataItem Format="HDF" NumberType="Int" Dimensions="7776 1">mesh.h5:/en_map</DataItem>
+	<Topology Type="Quadrilateral" NumberOfElements="13824">
+		<DataItem ItemType="Function" Dimensions="13824 4" Function="JOIN($0, $1, $3, $2)">
+		<DataItem ItemType="HyperSlab" Dimensions="13824 1" Name="C0">
+				<DataItem Dimensions="3 2" Format="XML"> 0 0 1 1 13824 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="13824 1">mesh.h5:/en_map</DataItem>
 		</DataItem>
-		<DataItem ItemType="HyperSlab" Dimensions="7776 1" Name="C1">
-				<DataItem Dimensions="3 2" Format="XML"> 0 1 1 1 7776 1 </DataItem>
-				<DataItem Format="HDF" NumberType="Int" Dimensions="7776 1">mesh.h5:/en_map</DataItem>
+		<DataItem ItemType="HyperSlab" Dimensions="13824 1" Name="C1">
+				<DataItem Dimensions="3 2" Format="XML"> 0 1 1 1 13824 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="13824 1">mesh.h5:/en_map</DataItem>
 		</DataItem>
-		<DataItem ItemType="HyperSlab" Dimensions="7776 1" Name="C2">
-				<DataItem Dimensions="3 2" Format="XML"> 0 2 1 1 7776 1 </DataItem>
-				<DataItem Format="HDF" NumberType="Int" Dimensions="7776 1">mesh.h5:/en_map</DataItem>
+		<DataItem ItemType="HyperSlab" Dimensions="13824 1" Name="C2">
+				<DataItem Dimensions="3 2" Format="XML"> 0 2 1 1 13824 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="13824 1">mesh.h5:/en_map</DataItem>
 		</DataItem>
-		<DataItem ItemType="HyperSlab" Dimensions="7776 1" Name="C3">
-				<DataItem Dimensions="3 2" Format="XML"> 0 3 1 1 7776 1 </DataItem>
-				<DataItem Format="HDF" NumberType="Int" Dimensions="7776 1">mesh.h5:/en_map</DataItem>
+		<DataItem ItemType="HyperSlab" Dimensions="13824 1" Name="C3">
+				<DataItem Dimensions="3 2" Format="XML"> 0 3 1 1 13824 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Int" Dimensions="13824 1">mesh.h5:/en_map</DataItem>
 		</DataItem>
 		</DataItem>
 	</Topology>
 	<Geometry Type="XYZ">
-		<DataItem ItemType="Function"  Dimensions="7957 3" Function="JOIN($0, $1, 0*$1)">
-			<DataItem ItemType="HyperSlab" Dimensions="7957 1" Name="XCoords">
-				<DataItem Dimensions="3 2" Format="XML"> 0 0 1 1 7957 1 </DataItem>
-				<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="7957 2">mesh.h5:/vertices</DataItem>
+		<DataItem ItemType="Function"  Dimensions="14065 3" Function="JOIN($0, $1, 0*$1)">
+			<DataItem ItemType="HyperSlab" Dimensions="14065 1" Name="XCoords">
+				<DataItem Dimensions="3 2" Format="XML"> 0 0 1 1 14065 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="14065 2">mesh.h5:/vertices</DataItem>
 			</DataItem>
-			<DataItem ItemType="HyperSlab" Dimensions="7957 1" Name="YCoords">
-				<DataItem Dimensions="3 2" Format="XML"> 0 1 1 1 7957 1 </DataItem>
-				<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="7957 2">mesh.h5:/vertices</DataItem>
+			<DataItem ItemType="HyperSlab" Dimensions="14065 1" Name="YCoords">
+				<DataItem Dimensions="3 2" Format="XML"> 0 1 1 1 14065 1 </DataItem>
+				<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="14065 2">mesh.h5:/vertices</DataItem>
 			</DataItem>
 		</DataItem>
 	</Geometry>
 	<Attribute Type="Scalar" Center="Node" Name="visc">
-			<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="7957 1">visc_1.h5:/data</DataItem>
+			<DataItem Format="HDF" NumberType="Float" Precision="8" Dimensions="14065 1">visc_1.h5:/data</DataItem>
 	</Attribute>
 </Grid>
 </Domain>
