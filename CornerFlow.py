@@ -140,10 +140,6 @@ dp.delViscInterface = 1e4
 dp.refViscInterface = 1e20
 dp.refDepthInterface = 80e3
 
-#
-#dp.interfacePreExp=2e2*5.34e-10            
-#dp.interfaceEnergy=0.4*3e5
-#dp.interfaceVolume=5.*5e-6
 
 #power law creep params
 dp.powerLawStrain = 1e-15
@@ -804,21 +800,28 @@ normDepths = depthFn/ndp.refDepthInterface
 interfaceCreep = ndp.refViscInterface*fn.math.exp(ndp.logDelVisc*(1. - normDepths) )
 #interfaceCreep = safe_visc(interfaceCreep0, viscmin=ndp.viscosityMinInterface, viscmax= ndp.viscosityMaxInterface)
 
-if md.plasticInterface:
+if ndp.viscosityMinInterface == ndp.viscosityMaxInterface:
+    interfaceViscosityFn = ndp.viscosityMinInterface
+    
+
+elif md.plasticInterface:
     interfaceys =  ndp.cohesionInterface + (druckerFaultDepthFn*ndp.frictionInterface)
     interfaceysf = fn.misc.min(interfaceys, ndp.ysMaxInterface)
     interfaceYielding = interfaceysf/(2.*(strainRate_2ndInvariant) + 1e-15)
+    #combine
+    interfaceViscosityFn = safe_visc(fn.misc.min(interfaceCreep , interfaceYielding), viscmin=ndp.viscosityMinInterface, viscmax=ndp.viscosityMaxInterface)
 
 
 else: # an equivalent visc implementation
     ndp.effStrainRate = ndp.subVelocity/ndp.faultThickness
     effStressUpper =  ndp.cohesionInterface + (depthFn*ndp.frictionInterface)
-    interfaceYielding = effStressUpper/(2.*ndp.effStrainRate)   
+    interfaceYielding = effStressUpper/(2.*ndp.effStrainRate)
+    #combine
+    interfaceViscosityFn = safe_visc(fn.misc.min(interfaceCreep , interfaceYielding), viscmin=ndp.viscosityMinInterface, viscmax=ndp.viscosityMaxInterface)
     
-#combine
-interfaceViscosityFn = safe_visc(fn.misc.min(interfaceCreep , interfaceYielding), viscmin=ndp.viscosityMinInterface, viscmax=ndp.viscosityMaxInterface)
 
 
+#finally apply the taper that swtaiches off the interface viscosity over spicified inteface
 depthTaperFn = cosine_taper(depthFn, ndp.crustViscCutoffDepth, ndp.crustViscEndWidth)
 interfaceViscosityFn =  interfaceViscosityFn*(1. - depthTaperFn) + depthTaperFn*mantleViscosityFn
 
@@ -1015,6 +1018,12 @@ dTdYVar.data[:] = delTyField[1].evaluate(surfaceSwarm)
 # In[51]:
 
 def save_surface(step):
+    
+    #Update the data
+    delTyField = temperatureField.fn_gradient 
+    dTdYVar.data[:] = delTyField[1].evaluate(surfaceSwarm)
+    
+    
     #Save the files:
     fullpath = os.path.join(outputPath + "files/")
     #fault
