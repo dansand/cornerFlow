@@ -1,0 +1,11 @@
+results/
+**/results/
+**/output/
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+**/*.png
+**/temp_results/
+**/temp/
+**/*.pyc
+**/*.gldb
+./datas.tar.gz
