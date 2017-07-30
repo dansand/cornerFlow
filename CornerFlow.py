@@ -1095,7 +1095,7 @@ fig1.append( glucifer.objects.Mesh(mesh))
 
 # In[63]:
 
-def viz_update():
+def viz_update(step):
     #save gldbs
     fullpath = os.path.join(outputPath + "gldbs/")
     
@@ -1173,7 +1173,7 @@ def run_to_equil(maxIts= 4, maxTime = 0.001 ):
         if step % 10 == 0:
             save_xdmfs(step, elapsedTime)
             save_surface(step)
-            viz_update()
+            viz_update(step)
             
         #Save surface heat flow    
           
